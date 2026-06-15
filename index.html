@@ -1,0 +1,948 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>今日の一句</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700&family=Noto+Serif+JP:wght@400;600;700&display=swap" rel="stylesheet" />
+
+<style>
+/* ============================================================
+   今日の一句 — スタイル（GAS版）
+   和モダン × 短冊 テーマ / Mobile-first
+   ============================================================ */
+:root {
+  --ink:        #1a1a2e;
+  --washi:      #f5f0e8;
+  --washi-dark: #ece6d8;
+  --vermilion:  #c0392b;
+  --vermilion-l:#e74c3c;
+  --ai:         #2c5f8a;
+  --gold:       #b8860b;
+  --pine:       #2d5a27;
+  --sakura:     #c0549a;
+  --russet:     #8b4513;
+  --indigo:     #3b4a9a;
+  --text:       #2c2c3e;
+  --text-sub:   #6b6b7e;
+  --border:     #ddd8cc;
+  --shadow:     rgba(26,26,46,.12);
+  --font-serif: "Noto Serif JP","游明朝",serif;
+  --font-sans:  "Noto Sans JP","ヒラギノ角ゴ ProN",sans-serif;
+  --r-sm:4px; --r-md:8px; --r-lg:16px;
+  --tr:.2s ease;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{
+  font-family:var(--font-sans);
+  background:var(--washi);
+  color:var(--text);
+  font-size:16px;
+  line-height:1.7;
+  min-height:100dvh;
+  background-image:repeating-linear-gradient(90deg,transparent,transparent 39px,rgba(0,0,0,.03) 39px,rgba(0,0,0,.03) 40px);
+}
+button{cursor:pointer;font-family:var(--font-sans)}
+input,select,textarea{font-family:var(--font-sans)}
+
+/* ── ヘッダー ── */
+.site-header{position:sticky;top:0;z-index:100;background:var(--ink);box-shadow:0 2px 12px rgba(0,0,0,.25)}
+.header-inner{max-width:800px;margin:0 auto;padding:0 16px;height:64px;display:flex;align-items:center;justify-content:space-between;gap:16px}
+.site-logo{display:flex;align-items:center;gap:8px}
+.logo-mark{font-family:var(--font-serif);font-size:2rem;font-weight:700;color:var(--vermilion);width:44px;height:44px;display:flex;align-items:center;justify-content:center;border:2px solid var(--vermilion);border-radius:var(--r-sm);flex-shrink:0;letter-spacing:-2px}
+.logo-text h1{font-family:var(--font-serif);font-size:1.15rem;font-weight:700;color:#fff;line-height:1.2}
+.logo-tagline{font-size:.68rem;color:rgba(255,255,255,.55);white-space:nowrap}
+.btn-compose{display:flex;align-items:center;gap:4px;background:var(--vermilion);color:#fff;border:none;border-radius:var(--r-md);padding:10px 16px;font-size:.9rem;font-weight:700;transition:background var(--tr),transform var(--tr);white-space:nowrap}
+.btn-compose:hover{background:var(--vermilion-l);transform:translateY(-1px)}
+
+/* ── メイン ── */
+.main-content{max-width:800px;margin:0 auto;padding:24px 16px 80px}
+
+/* ── フィードコントロール ── */
+.feed-controls{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:24px;flex-wrap:wrap}
+.feed-sort{display:flex;gap:4px}
+.sort-btn{background:transparent;border:1.5px solid var(--border);color:var(--text-sub);border-radius:20px;padding:6px 14px;font-size:.82rem;font-weight:500;transition:all var(--tr)}
+.sort-btn.active,.sort-btn:hover{background:var(--ink);color:#fff;border-color:var(--ink)}
+.generation-filter{background:#fff;border:1.5px solid var(--border);color:var(--text);border-radius:20px;padding:6px 28px 6px 12px;font-size:.82rem;cursor:pointer;appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%236b6b7e'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 10px center}
+
+/* ── カード ── */
+.haiku-feed{display:flex;flex-direction:column;gap:24px}
+.haiku-card{background:#fff;border-radius:var(--r-lg);box-shadow:0 2px 16px var(--shadow);overflow:hidden;animation:cardIn .4s ease both;border-left:4px solid transparent;transition:box-shadow var(--tr),transform var(--tr)}
+.haiku-card:hover{box-shadow:0 6px 28px rgba(26,26,46,.18);transform:translateY(-2px)}
+.haiku-card[data-gen="teen"]    {border-left-color:var(--pine)}
+.haiku-card[data-gen="twenties"]{border-left-color:var(--sakura)}
+.haiku-card[data-gen="forties"] {border-left-color:var(--russet)}
+.haiku-card[data-gen="senior"]  {border-left-color:var(--indigo)}
+@keyframes cardIn{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}
+
+.card-tanzaku{position:relative;padding:24px 24px 16px;background:linear-gradient(135deg,#fdfaf5,#f8f2e6);border-bottom:1px solid var(--washi-dark)}
+.card-tanzaku::after{content:attr(data-type-label);position:absolute;top:16px;right:16px;font-family:var(--font-serif);font-size:.65rem;color:var(--vermilion);border:1px solid var(--vermilion);border-radius:3px;padding:2px 6px;opacity:.7;letter-spacing:.05em}
+.poem-body{font-family:var(--font-serif);font-size:clamp(1.05rem,2.5vw,1.3rem);font-weight:600;color:var(--ink);letter-spacing:.08em;line-height:1.9;text-align:center}
+.poem-phrase{display:block}
+.poem-comment{margin-top:8px;font-family:var(--font-sans);font-size:.8rem;color:var(--text-sub);text-align:center;font-style:italic}
+
+/* カードフッター */
+.card-footer{padding:16px 24px;display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap}
+.card-meta{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.gen-badge{display:inline-flex;align-items:center;gap:4px;font-size:.72rem;font-weight:700;padding:3px 10px;border-radius:20px;white-space:nowrap}
+.gen-badge[data-gen="teen"]    {background:#e8f5e3;color:var(--pine)}
+.gen-badge[data-gen="twenties"]{background:#fce4f5;color:var(--sakura)}
+.gen-badge[data-gen="forties"] {background:#f5ece4;color:var(--russet)}
+.gen-badge[data-gen="senior"]  {background:#e4e8f5;color:var(--indigo)}
+.card-timestamp{font-size:.72rem;color:var(--text-sub)}
+
+/* カードアクション */
+.card-actions{display:flex;flex-direction:column;align-items:flex-end;gap:6px}
+.zabuton-btn{display:flex;align-items:center;gap:6px;background:var(--washi);border:1.5px solid var(--border);border-radius:var(--r-md);padding:8px 14px;font-size:.85rem;font-weight:700;color:var(--text-sub);transition:all var(--tr)}
+.zabuton-btn:hover{background:var(--ink);color:#fff;border-color:var(--ink)}
+.owner-actions{display:flex;gap:6px}
+.btn-edit,.btn-delete{border:none;border-radius:var(--r-sm);padding:5px 12px;font-size:.75rem;font-weight:700;transition:all var(--tr)}
+.btn-edit{background:#e8f0fe;color:var(--ai)}
+.btn-edit:hover{background:var(--ai);color:#fff}
+.btn-delete{background:#fde8e8;color:var(--vermilion)}
+.btn-delete:hover{background:var(--vermilion);color:#fff}
+.zabuton-total{font-size:.72rem;color:var(--text-sub);text-align:right}
+.zabuton-total strong{font-size:1.1rem;font-weight:700;color:var(--gold);font-family:var(--font-serif)}
+
+/* 座布団バー */
+.zabuton-breakdown{width:100%;padding:0 24px 16px;display:flex;flex-direction:column;gap:6px}
+.zab-row{display:flex;align-items:center;gap:8px;font-size:.75rem}
+.zab-gen-label{width:68px;font-size:.72rem;color:var(--text-sub);flex-shrink:0;text-align:right}
+.zab-bar-track{flex:1;height:8px;background:var(--washi-dark);border-radius:4px;overflow:hidden}
+.zab-bar-fill{height:100%;border-radius:4px;transition:width .5s ease}
+.zab-bar-fill[data-gen="teen"]    {background:var(--pine)}
+.zab-bar-fill[data-gen="twenties"]{background:var(--sakura)}
+.zab-bar-fill[data-gen="forties"] {background:var(--russet)}
+.zab-bar-fill[data-gen="senior"]  {background:var(--indigo)}
+.zab-count{width:28px;font-size:.75rem;font-weight:700;color:var(--text);text-align:right;flex-shrink:0}
+.zab-emoji{font-size:.8rem;flex-shrink:0}
+
+/* ── 空状態 ── */
+.empty-state{text-align:center;padding:40px 16px}
+.empty-icon{font-size:3rem;margin-bottom:16px}
+.empty-title{font-family:var(--font-serif);font-size:1.2rem;color:var(--text-sub);margin-bottom:4px}
+.empty-sub{font-size:.85rem;color:var(--text-sub);margin-bottom:24px}
+.btn-primary{background:var(--vermilion);color:#fff;border:none;border-radius:var(--r-md);padding:12px 28px;font-size:1rem;font-weight:700;transition:background var(--tr),transform var(--tr)}
+.btn-primary:hover{background:var(--vermilion-l);transform:translateY(-1px)}
+
+/* ── ローディング ── */
+.loading-state{text-align:center;padding:48px 16px;color:var(--text-sub)}
+.spinner{display:inline-block;width:36px;height:36px;border:3px solid var(--border);border-top-color:var(--vermilion);border-radius:50%;animation:spin .8s linear infinite;margin-bottom:16px}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* ── モーダル ── */
+.modal-overlay{position:fixed;inset:0;z-index:200;background:rgba(10,10,20,.65);backdrop-filter:blur(4px);display:flex;align-items:flex-end;justify-content:center;padding:0;animation:overlayIn .25s ease}
+.modal-overlay[hidden]{display:none!important}
+@keyframes overlayIn{from{opacity:0}to{opacity:1}}
+.modal{background:#fff;width:100%;max-width:600px;border-radius:var(--r-lg) var(--r-lg) 0 0;max-height:92dvh;overflow-y:auto;animation:modalUp .3s cubic-bezier(.32,.72,0,1)}
+@keyframes modalUp{from{transform:translateY(40px);opacity:0}to{transform:translateY(0);opacity:1}}
+.modal-header{position:sticky;top:0;background:#fff;z-index:1;display:flex;align-items:center;justify-content:space-between;padding:24px 24px 16px;border-bottom:1px solid var(--washi-dark)}
+.modal-title{font-family:var(--font-serif);font-size:1.15rem;font-weight:700;color:var(--ink)}
+.modal-close{background:none;border:none;font-size:1.5rem;color:var(--text-sub);line-height:1;padding:4px 8px;border-radius:var(--r-sm);transition:color var(--tr),background var(--tr)}
+.modal-close:hover{background:var(--washi-dark);color:var(--ink)}
+.modal-body{padding:24px;display:flex;flex-direction:column;gap:24px}
+
+/* タブ */
+.poem-type-tabs{display:flex;gap:8px;background:var(--washi);border-radius:var(--r-md);padding:4px}
+.tab-btn{flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;background:transparent;border:none;padding:10px;border-radius:var(--r-sm);font-size:.9rem;font-weight:700;color:var(--text-sub);transition:all var(--tr)}
+.tab-btn.active{background:#fff;color:var(--ink);box-shadow:0 2px 8px var(--shadow)}
+.tab-hint{font-size:.65rem;font-weight:400;color:var(--text-sub);opacity:.8}
+.tab-btn.active .tab-hint{opacity:1}
+
+/* 句入力 */
+.syllable-boxes{display:flex;flex-direction:column;gap:10px}
+.syl-group{display:flex;flex-direction:column;gap:4px}
+.syl-input{width:100%;background:var(--washi);border:2px solid var(--border);border-radius:var(--r-md);padding:12px 16px;font-family:var(--font-serif);font-size:1.1rem;color:var(--ink);letter-spacing:.08em;transition:border-color var(--tr),box-shadow var(--tr)}
+.syl-input:focus{outline:none;border-color:var(--vermilion);box-shadow:0 0 0 3px rgba(192,57,43,.15);background:#fff}
+.syl-label{font-size:.7rem;color:var(--text-sub);padding-left:4px}
+.syl-divider{text-align:center;color:var(--border);font-size:1.2rem;line-height:1}
+
+/* プレビュー */
+.poem-preview{margin-top:16px;background:linear-gradient(135deg,#fdfaf5,#f5f0e8);border:1px solid var(--border);border-radius:var(--r-md);padding:16px;text-align:center;border-left:3px solid var(--vermilion)}
+.preview-label{display:block;font-size:.68rem;color:var(--text-sub);letter-spacing:.1em;margin-bottom:4px;text-transform:uppercase}
+.preview-text{font-family:var(--font-serif);font-size:1rem;font-weight:600;color:var(--ink);letter-spacing:.15em;line-height:2;min-height:2em}
+
+/* フォーム */
+.form-group{display:flex;flex-direction:column;gap:8px}
+.form-label{font-size:.85rem;font-weight:700;color:var(--ink)}
+.optional{font-weight:400;color:var(--text-sub);font-size:.78rem}
+.generation-selector{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.gen-btn{background:var(--washi);border:2px solid var(--border);border-radius:var(--r-md);padding:12px 8px;font-size:.88rem;font-weight:700;color:var(--text-sub);transition:all var(--tr);text-align:center}
+.gen-btn:hover{border-color:var(--ink);color:var(--ink)}
+.gen-btn.selected[data-gen="teen"]    {background:#e8f5e3;color:var(--pine);border-color:var(--pine)}
+.gen-btn.selected[data-gen="twenties"]{background:#fce4f5;color:var(--sakura);border-color:var(--sakura)}
+.gen-btn.selected[data-gen="forties"] {background:#f5ece4;color:var(--russet);border-color:var(--russet)}
+.gen-btn.selected[data-gen="senior"]  {background:#e4e8f5;color:var(--indigo);border-color:var(--indigo)}
+.comment-input{background:var(--washi);border:2px solid var(--border);border-radius:var(--r-md);padding:10px 14px;font-size:.9rem;color:var(--text);transition:border-color var(--tr);width:100%}
+.comment-input:focus{outline:none;border-color:var(--ai);box-shadow:0 0 0 3px rgba(44,95,138,.15);background:#fff}
+.form-error{background:#fef2f2;border:1px solid #fecaca;color:#dc2626;border-radius:var(--r-sm);padding:8px 16px;font-size:.85rem}
+.btn-submit{background:var(--ink);color:#fff;border:none;border-radius:var(--r-md);padding:16px;font-size:1.05rem;font-weight:700;width:100%;transition:background var(--tr),transform var(--tr);letter-spacing:.05em}
+.btn-submit:hover{background:var(--ai);transform:translateY(-1px)}
+.btn-submit:disabled{opacity:.5;cursor:not-allowed;transform:none}
+
+/* 座布団モーダル */
+.modal-sm{max-width:400px}
+.zabuton-desc{font-size:.88rem;color:var(--text-sub);text-align:center;margin-bottom:16px}
+
+/* 削除確認モーダル */
+.confirm-msg{font-size:.95rem;color:var(--text);text-align:center;padding:8px 0}
+.confirm-actions{display:flex;gap:12px;margin-top:8px}
+.btn-cancel{flex:1;background:var(--washi);border:1.5px solid var(--border);color:var(--text-sub);border-radius:var(--r-md);padding:12px;font-size:.9rem;font-weight:700;transition:all var(--tr)}
+.btn-cancel:hover{background:var(--washi-dark)}
+.btn-danger{flex:1;background:var(--vermilion);color:#fff;border:none;border-radius:var(--r-md);padding:12px;font-size:.9rem;font-weight:700;transition:background var(--tr)}
+.btn-danger:hover{background:var(--vermilion-l)}
+
+/* トースト */
+.toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);z-index:999;background:var(--ink);color:#fff;border-radius:var(--r-md);padding:12px 24px;font-size:.9rem;font-weight:500;box-shadow:0 4px 20px rgba(0,0,0,.3);animation:toastIn .3s ease;white-space:nowrap;pointer-events:none}
+.toast[hidden]{display:none!important}
+@keyframes toastIn{from{opacity:0;transform:translate(-50%,12px)}to{opacity:1;transform:translate(-50%,0)}}
+
+/* ── レスポンシブ ── */
+@media(min-width:640px){
+  .header-inner{height:72px;padding:0 40px}
+  .logo-text h1{font-size:1.35rem}
+  .main-content{padding:40px 40px 80px}
+  .poem-body{font-size:1.4rem}
+  .card-tanzaku{padding:40px 40px 24px}
+  .card-footer{padding:24px 40px}
+  .zabuton-breakdown{padding:0 40px 24px}
+  .syllable-boxes{flex-direction:row;align-items:center;gap:8px}
+  .syl-group{flex:1}
+  .syl-divider{font-size:1.5rem;margin-top:-16px}
+  .syl-input{text-align:center}
+  .generation-selector{grid-template-columns:repeat(4,1fr)}
+  .modal-overlay{align-items:center;padding:16px}
+  .modal{border-radius:var(--r-lg);max-height:88vh}
+}
+@media(prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation-duration:.01ms!important;transition-duration:.01ms!important}
+}
+:focus-visible{outline:2px solid var(--vermilion);outline-offset:2px}
+::selection{background:rgba(192,57,43,.15);color:var(--ink)}
+</style>
+</head>
+<body>
+
+<!-- ヘッダー -->
+<header class="site-header">
+  <div class="header-inner">
+    <div class="site-logo">
+      <span class="logo-mark">句</span>
+      <div class="logo-text">
+        <h1>今日の一句</h1>
+        <p class="logo-tagline">あなたの日常を、五七五に。</p>
+      </div>
+    </div>
+    <button class="btn-compose" id="openModalBtn" aria-label="句を詠む">
+      <span>✏️</span><span>句を詠む</span>
+    </button>
+  </div>
+</header>
+
+<!-- メイン -->
+<main class="main-content">
+  <div class="feed-controls">
+    <div class="feed-sort">
+      <button class="sort-btn active" data-sort="new">新着順</button>
+      <button class="sort-btn" data-sort="zabuton">座布団順</button>
+    </div>
+    <select class="generation-filter" id="generationFilter" aria-label="世代で絞り込む">
+      <option value="all">すべての世代</option>
+      <option value="teen">10代</option>
+      <option value="twenties">20〜30代</option>
+      <option value="forties">40〜50代</option>
+      <option value="senior">60代以上</option>
+    </select>
+  </div>
+
+  <!-- ローディング -->
+  <div class="loading-state" id="loadingState">
+    <div class="spinner"></div>
+    <p>読み込み中…</p>
+  </div>
+
+  <!-- フィード -->
+  <div class="haiku-feed" id="haikuFeed" hidden></div>
+
+  <!-- 空状態 -->
+  <div class="empty-state" id="emptyState" hidden>
+    <div class="empty-icon">🌸</div>
+    <p class="empty-title">まだ句がありません</p>
+    <p class="empty-sub">最初の一句を詠んでみましょう</p>
+    <button class="btn-primary" id="emptyComposeBtn">句を詠む</button>
+  </div>
+</main>
+
+<!-- ── 投稿・編集モーダル ── -->
+<div class="modal-overlay" id="modalOverlay" role="dialog" aria-modal="true" aria-labelledby="modalTitle" hidden>
+  <div class="modal">
+    <div class="modal-header">
+      <h2 class="modal-title" id="modalTitle">句を詠む</h2>
+      <button class="modal-close" id="closeModalBtn" aria-label="閉じる">×</button>
+    </div>
+    <div class="modal-body">
+
+      <!-- 句種別タブ -->
+      <div class="poem-type-tabs" role="tablist">
+        <button class="tab-btn active" role="tab" data-type="haiku" aria-selected="true">
+          川柳・俳句<span class="tab-hint">五七五（17音）</span>
+        </button>
+        <button class="tab-btn" role="tab" data-type="tanka" aria-selected="false">
+          短歌<span class="tab-hint">五七五七七（31音）</span>
+        </button>
+      </div>
+
+      <!-- 句入力 -->
+      <div>
+        <div class="syllable-boxes" id="syllableBoxes">
+          <div class="syl-group">
+            <input type="text" class="syl-input" id="phrase1" placeholder="五（5音）" maxlength="30" aria-label="上の句" autocomplete="off"/>
+            <span class="syl-label">上の句</span>
+          </div>
+          <div class="syl-divider">─</div>
+          <div class="syl-group">
+            <input type="text" class="syl-input" id="phrase2" placeholder="七（7音）" maxlength="30" aria-label="中の句" autocomplete="off"/>
+            <span class="syl-label">中の句</span>
+          </div>
+          <div class="syl-divider">─</div>
+          <div class="syl-group">
+            <input type="text" class="syl-input" id="phrase3" placeholder="五（5音）" maxlength="30" aria-label="下の句" autocomplete="off"/>
+            <span class="syl-label">下の句</span>
+          </div>
+          <div class="syl-divider" id="div3" hidden>─</div>
+          <div class="syl-group" id="pg4" hidden>
+            <input type="text" class="syl-input" id="phrase4" placeholder="七（7音）" maxlength="30" aria-label="第四句" autocomplete="off"/>
+            <span class="syl-label">第四句</span>
+          </div>
+          <div class="syl-divider" id="div4" hidden>─</div>
+          <div class="syl-group" id="pg5" hidden>
+            <input type="text" class="syl-input" id="phrase5" placeholder="七（7音）" maxlength="30" aria-label="結句" autocomplete="off"/>
+            <span class="syl-label">結句</span>
+          </div>
+        </div>
+
+        <!-- プレビュー -->
+        <div class="poem-preview">
+          <span class="preview-label">プレビュー</span>
+          <div class="preview-text" id="previewText" aria-live="polite">──</div>
+        </div>
+      </div>
+
+      <!-- 世代選択 -->
+      <div class="form-group">
+        <label class="form-label">あなたの世代</label>
+        <div class="generation-selector" id="generationSelector">
+          <button type="button" class="gen-btn" data-gen="teen">10代</button>
+          <button type="button" class="gen-btn" data-gen="twenties">20〜30代</button>
+          <button type="button" class="gen-btn" data-gen="forties">40〜50代</button>
+          <button type="button" class="gen-btn" data-gen="senior">60代以上</button>
+        </div>
+      </div>
+
+      <!-- コメント -->
+      <div class="form-group">
+        <label class="form-label" for="commentInput">ひとこと <span class="optional">（任意）</span></label>
+        <input type="text" id="commentInput" class="comment-input" placeholder="句に込めた思いや背景など…" maxlength="60"/>
+      </div>
+
+      <div class="form-error" id="formError" hidden role="alert"></div>
+      <button class="btn-submit" id="submitBtn">詠む 🌸</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── 座布団モーダル ── -->
+<div class="modal-overlay" id="zabutonOverlay" role="dialog" aria-modal="true" hidden>
+  <div class="modal modal-sm">
+    <div class="modal-header">
+      <h2 class="modal-title">座布団を贈る 🪑</h2>
+      <button class="modal-close" id="closeZabutonBtn" aria-label="閉じる">×</button>
+    </div>
+    <div class="modal-body">
+      <p class="zabuton-desc">あなたの世代を選んで座布団を贈りましょう</p>
+      <div class="generation-selector" id="zabutonGenSelector">
+        <button type="button" class="gen-btn" data-gen="teen">10代</button>
+        <button type="button" class="gen-btn" data-gen="twenties">20〜30代</button>
+        <button type="button" class="gen-btn" data-gen="forties">40〜50代</button>
+        <button type="button" class="gen-btn" data-gen="senior">60代以上</button>
+      </div>
+      <div class="form-error" id="zabutonError" hidden role="alert"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ── 削除確認モーダル ── -->
+<div class="modal-overlay" id="deleteOverlay" role="dialog" aria-modal="true" hidden>
+  <div class="modal modal-sm">
+    <div class="modal-header">
+      <h2 class="modal-title">投稿を削除しますか？</h2>
+      <button class="modal-close" id="closeDeleteBtn" aria-label="閉じる">×</button>
+    </div>
+    <div class="modal-body">
+      <p class="confirm-msg">この操作は取り消せません。本当に削除しますか？</p>
+      <div class="confirm-actions">
+        <button class="btn-cancel" id="cancelDeleteBtn">キャンセル</button>
+        <button class="btn-danger" id="confirmDeleteBtn">削除する</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- トースト -->
+<div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+
+<script>
+/* ============================================================
+   今日の一句 — フロントエンドスクリプト（GAS版）
+   ============================================================ */
+"use strict";
+
+/* ── 定数 ── */
+const SESSION_STORAGE_KEY = "ikku_session_id";
+const VOTED_STORAGE_KEY   = "ikku_voted_v1";
+
+const GENERATIONS = {
+  teen:     { label:"10代",     emoji:"🌱" },
+  twenties: { label:"20〜30代", emoji:"🌸" },
+  forties:  { label:"40〜50代", emoji:"🍁" },
+  senior:   { label:"60代以上", emoji:"⛩️" },
+};
+
+const TYPE_LABELS = { haiku:"川柳・俳句", tanka:"短歌" };
+
+/* ── セッションID ──
+   投稿者を識別するUUID。localStorage に永続化。
+   サーバー側でUUID形式チェックを行う。
+   外部に漏れてもDBに直接アクセスできないため安全。
+*/
+function getSessionId() {
+  let sid = localStorage.getItem(SESSION_STORAGE_KEY);
+  if (!sid || !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(sid)) {
+    sid = crypto.randomUUID();
+    localStorage.setItem(SESSION_STORAGE_KEY, sid);
+  }
+  return sid;
+}
+
+/* ── 座布団投票記録（localStorage） ── */
+function getVoted() {
+  try { return JSON.parse(localStorage.getItem(VOTED_STORAGE_KEY) || "{}"); } catch { return {}; }
+}
+function setVoted(postId, gen) {
+  const v = getVoted();
+  if (!v[postId]) v[postId] = {};
+  v[postId][gen] = true;
+  localStorage.setItem(VOTED_STORAGE_KEY, JSON.stringify(v));
+}
+function hasVoted(postId, gen) {
+  const v = getVoted();
+  return !!(v[postId] && v[postId][gen]);
+}
+
+/* ── 状態 ── */
+const state = {
+  posts: [],
+  sort: "new",
+  filterGen: "all",
+  editingPostId: null,
+  deletingPostId: null,
+  pendingZabutonId: null,
+  currentType: "haiku",
+  selectedGen: null,
+  loading: false,
+};
+
+/* ── GAS API 呼び出し ──
+   google.script.run を使う。
+   GASのHtmlServiceで配信されるページ内でのみ動作する
+   最も確実な方法。
+*/
+function callApi(action, params = {}) {
+  return new Promise((resolve, reject) => {
+    google.script.run
+      .withSuccessHandler(result => {
+        if (result && result.ok) resolve(result.data);
+        else reject(new Error((result && result.error) || "エラーが発生しました"));
+      })
+      .withFailureHandler(err => {
+        reject(new Error(err.message || "通信エラーが発生しました"));
+      })
+      .handleRequest(JSON.stringify({ action, ...params }));
+  });
+}
+
+/* ============================================================
+   ユーティリティ
+   ============================================================ */
+function esc(str) {
+  return String(str ?? "")
+    .replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")
+    .replace(/"/g,"&quot;").replace(/'/g,"&#39;");
+}
+function totalZab(post) {
+  return Object.values(post.zabuton).reduce((a,b)=>a+b, 0);
+}
+function formatTime(ts) {
+  const diff = Date.now() - ts;
+  const min = Math.floor(diff / 60000);
+  if (min < 1)  return "たった今";
+  if (min < 60) return `${min}分前`;
+  const h = Math.floor(min / 60);
+  if (h < 24)   return `${h}時間前`;
+  const d = Math.floor(h / 24);
+  return d < 7 ? `${d}日前` : new Date(ts).toLocaleDateString("ja-JP");
+}
+
+/* ============================================================
+   レンダリング
+   ============================================================ */
+function renderPhrases(post) {
+  return post.phrases.map(p => `<span class="poem-phrase">${esc(p)}</span>`).join("");
+}
+
+function renderZabBreakdown(post) {
+  const total = totalZab(post);
+  return Object.entries(GENERATIONS).map(([key, gen]) => {
+    const count = post.zabuton[key] || 0;
+    const pct   = total > 0 ? Math.round(count / total * 100) : 0;
+    return `<div class="zab-row">
+      <span class="zab-gen-label">${gen.label}</span>
+      <div class="zab-bar-track"><div class="zab-bar-fill" data-gen="${key}" style="width:${pct}%"></div></div>
+      <span class="zab-count">${count}</span>
+      <span class="zab-emoji">${gen.emoji}</span>
+    </div>`;
+  }).join("");
+}
+
+function renderCard(post) {
+  const sid     = getSessionId();
+  const isOwner = post._sessionId === sid;   // ※サーバーは返さない→常にfalse（別途判定）
+  const gen     = GENERATIONS[post.generation] || { label:post.generation, emoji:"" };
+  const total   = totalZab(post);
+  const comment = post.comment
+    ? `<p class="poem-comment">「${esc(post.comment)}」</p>` : "";
+
+  // 投稿者判定：ownerIds をローカル管理
+  const ownedIds = getOwnedIds();
+  const owned    = ownedIds.includes(post.id);
+
+  const ownerBtns = owned ? `
+    <div class="owner-actions">
+      <button class="btn-edit"   data-action="edit"   data-id="${esc(post.id)}" aria-label="編集">✏️ 編集</button>
+      <button class="btn-delete" data-action="delete" data-id="${esc(post.id)}" aria-label="削除">🗑 削除</button>
+    </div>` : "";
+
+  return `
+  <article class="haiku-card" data-gen="${esc(post.generation)}" data-id="${esc(post.id)}">
+    <div class="card-tanzaku" data-type-label="${esc(TYPE_LABELS[post.type] || post.type)}">
+      <div class="poem-body">${renderPhrases(post)}</div>
+      ${comment}
+    </div>
+    <div class="card-footer">
+      <div class="card-meta">
+        <span class="gen-badge" data-gen="${esc(post.generation)}">${gen.emoji} ${gen.label}</span>
+        <span class="card-timestamp">${formatTime(post.timestamp)}</span>
+      </div>
+      <div class="card-actions">
+        <button class="zabuton-btn" data-action="zabuton" data-id="${esc(post.id)}" aria-label="座布団を贈る">
+          🪑 座布団を贈る
+        </button>
+        <div class="zabuton-total">合計 <strong>${total}</strong> 枚</div>
+        ${ownerBtns}
+      </div>
+    </div>
+    <div class="zabuton-breakdown">${renderZabBreakdown(post)}</div>
+  </article>`;
+}
+
+function renderFeed() {
+  const feed  = document.getElementById("haikuFeed");
+  const empty = document.getElementById("emptyState");
+
+  let posts = state.posts.filter(p =>
+    state.filterGen === "all" || p.generation === state.filterGen
+  );
+  if (state.sort === "new") {
+    posts.sort((a,b) => b.timestamp - a.timestamp);
+  } else {
+    posts.sort((a,b) => totalZab(b) - totalZab(a));
+  }
+
+  feed.hidden = false;
+  if (posts.length === 0) {
+    feed.innerHTML = "";
+    empty.hidden = false;
+  } else {
+    empty.hidden = true;
+    feed.innerHTML = posts.map(renderCard).join("");
+  }
+}
+
+function updateCardEl(postId) {
+  const post = state.posts.find(p => p.id === postId);
+  if (!post) return;
+  const el = document.querySelector(`.haiku-card[data-id="${postId}"]`);
+  if (!el) return;
+  const tmp = document.createElement("div");
+  tmp.innerHTML = renderCard(post);
+  el.replaceWith(tmp.firstElementChild);
+}
+
+/* ── 自分の投稿ID管理 ── */
+const OWNED_KEY = "ikku_owned_v1";
+function getOwnedIds() {
+  try { return JSON.parse(localStorage.getItem(OWNED_KEY) || "[]"); } catch { return []; }
+}
+function addOwnedId(id) {
+  const ids = getOwnedIds();
+  if (!ids.includes(id)) { ids.push(id); localStorage.setItem(OWNED_KEY, JSON.stringify(ids)); }
+}
+function removeOwnedId(id) {
+  const ids = getOwnedIds().filter(i => i !== id);
+  localStorage.setItem(OWNED_KEY, JSON.stringify(ids));
+}
+
+/* ============================================================
+   API アクション
+   ============================================================ */
+async function loadPosts() {
+  document.getElementById("loadingState").hidden  = false;
+  document.getElementById("haikuFeed").hidden     = true;
+  document.getElementById("emptyState").hidden    = true;
+  try {
+    const data = await callApi("getPosts");
+    state.posts = data.posts;
+    renderFeed();
+  } catch (e) {
+    showToast("⚠️ 読み込みに失敗しました：" + e.message);
+  } finally {
+    document.getElementById("loadingState").hidden = true;
+  }
+}
+
+async function submitPost() {
+  const err = validateForm();
+  const errEl = document.getElementById("formError");
+  if (err) { errEl.textContent = err; errEl.hidden = false; return; }
+  errEl.hidden = true;
+
+  const type    = state.currentType;
+  const phraseIds = type === "haiku" ? ["phrase1","phrase2","phrase3"]
+                                     : ["phrase1","phrase2","phrase3","phrase4","phrase5"];
+  const phrases = phraseIds.map(id => document.getElementById(id).value.trim());
+  const comment = document.getElementById("commentInput").value.trim();
+
+  const btn = document.getElementById("submitBtn");
+  btn.disabled = true;
+  btn.textContent = "詠んでいます…";
+
+  try {
+    if (state.editingPostId) {
+      // ── 編集 ──
+      await callApi("editPost", {
+        postId: state.editingPostId,
+        type, phrases, comment,
+        generation: state.selectedGen,
+        sessionId: getSessionId(),
+      });
+      // ローカルも更新
+      const idx = state.posts.findIndex(p => p.id === state.editingPostId);
+      if (idx !== -1) {
+        state.posts[idx] = { ...state.posts[idx], type, phrases, comment, generation: state.selectedGen };
+      }
+      renderFeed();
+      showToast("句を編集しました ✏️");
+    } else {
+      // ── 新規投稿 ──
+      const { id, timestamp } = await callApi("createPost", {
+        type, phrases, comment,
+        generation: state.selectedGen,
+        sessionId: getSessionId(),
+      });
+      const newPost = {
+        id, type, phrases, comment,
+        generation: state.selectedGen,
+        timestamp,
+        zabuton: { teen:0, twenties:0, forties:0, senior:0 },
+      };
+      state.posts.unshift(newPost);
+      addOwnedId(id);
+      renderFeed();
+      showToast("句を詠みました！🌸");
+    }
+    closeModal();
+  } catch (e) {
+    errEl.textContent = e.message;
+    errEl.hidden = false;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "詠む 🌸";
+  }
+}
+
+async function giveZabuton(generation) {
+  const postId = state.pendingZabutonId;
+  const errEl  = document.getElementById("zabutonError");
+
+  if (hasVoted(postId, generation)) {
+    errEl.textContent = `${GENERATIONS[generation].label} からの座布団はすでに贈っています`;
+    errEl.hidden = false;
+    return;
+  }
+
+  try {
+    const { zabuton } = await callApi("zabuton", { postId, generation });
+    // ローカル更新
+    const post = state.posts.find(p => p.id === postId);
+    if (post) { post.zabuton = zabuton; updateCardEl(postId); }
+    setVoted(postId, generation);
+    closeZabutonModal();
+    showToast(`${GENERATIONS[generation].emoji} 座布団を贈りました！`);
+  } catch (e) {
+    errEl.textContent = e.message;
+    errEl.hidden = false;
+  }
+}
+
+async function deletePost() {
+  const postId = state.deletingPostId;
+  const btn    = document.getElementById("confirmDeleteBtn");
+  btn.disabled = true;
+  btn.textContent = "削除中…";
+  try {
+    await callApi("deletePost", { postId, sessionId: getSessionId() });
+    state.posts = state.posts.filter(p => p.id !== postId);
+    removeOwnedId(postId);
+    renderFeed();
+    closeDeleteModal();
+    showToast("投稿を削除しました 🗑");
+  } catch (e) {
+    showToast("⚠️ " + e.message);
+    closeDeleteModal();
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "削除する";
+  }
+}
+
+/* ============================================================
+   フォームバリデーション
+   ============================================================ */
+function validateForm() {
+  const type     = state.currentType;
+  const phraseIds = type === "haiku" ? ["phrase1","phrase2","phrase3"]
+                                     : ["phrase1","phrase2","phrase3","phrase4","phrase5"];
+  for (const id of phraseIds) {
+    if (!document.getElementById(id).value.trim()) return "すべての句を入力してください";
+  }
+  if (!state.selectedGen) return "あなたの世代を選択してください";
+  return null;
+}
+
+/* ============================================================
+   モーダル制御
+   ============================================================ */
+function openModal(editPost = null) {
+  state.editingPostId = editPost ? editPost.id : null;
+  document.getElementById("modalTitle").textContent = editPost ? "句を編集する" : "句を詠む";
+  document.getElementById("submitBtn").textContent  = editPost ? "更新する ✏️" : "詠む 🌸";
+
+  resetForm();
+
+  if (editPost) {
+    // 編集対象データを埋める
+    switchType(editPost.type);
+    editPost.phrases.forEach((p, i) => {
+      const el = document.getElementById(`phrase${i+1}`);
+      if (el) el.value = p;
+    });
+    document.getElementById("commentInput").value = editPost.comment || "";
+    // 世代選択
+    state.selectedGen = editPost.generation;
+    document.querySelectorAll("#generationSelector .gen-btn").forEach(b => {
+      b.classList.toggle("selected", b.dataset.gen === editPost.generation);
+    });
+    updatePreview();
+  }
+
+  document.getElementById("modalOverlay").hidden = false;
+  document.body.style.overflow = "hidden";
+  setTimeout(() => document.getElementById("phrase1").focus(), 100);
+}
+
+function closeModal() {
+  document.getElementById("modalOverlay").hidden = true;
+  document.body.style.overflow = "";
+  state.editingPostId = null;
+}
+
+function openZabutonModal(postId) {
+  state.pendingZabutonId = postId;
+  document.getElementById("zabutonError").hidden = true;
+  document.querySelectorAll("#zabutonGenSelector .gen-btn").forEach(b => b.classList.remove("selected"));
+  document.getElementById("zabutonOverlay").hidden = false;
+  document.body.style.overflow = "hidden";
+}
+
+function closeZabutonModal() {
+  document.getElementById("zabutonOverlay").hidden = true;
+  document.body.style.overflow = "";
+}
+
+function openDeleteModal(postId) {
+  state.deletingPostId = postId;
+  document.getElementById("deleteOverlay").hidden = false;
+  document.body.style.overflow = "hidden";
+}
+
+function closeDeleteModal() {
+  document.getElementById("deleteOverlay").hidden = true;
+  document.body.style.overflow = "";
+  state.deletingPostId = null;
+}
+
+function resetForm() {
+  ["phrase1","phrase2","phrase3","phrase4","phrase5"].forEach(id => {
+    const el = document.getElementById(id); if (el) el.value = "";
+  });
+  document.getElementById("commentInput").value = "";
+  document.getElementById("formError").hidden = true;
+  state.selectedGen = null;
+  document.querySelectorAll("#generationSelector .gen-btn").forEach(b => b.classList.remove("selected"));
+  switchType("haiku");
+  updatePreview();
+}
+
+/* ============================================================
+   タブ切替
+   ============================================================ */
+function switchType(type) {
+  state.currentType = type;
+  document.querySelectorAll(".poem-type-tabs .tab-btn").forEach(b => {
+    b.classList.toggle("active", b.dataset.type === type);
+    b.setAttribute("aria-selected", b.dataset.type === type ? "true" : "false");
+  });
+  const isTanka = type === "tanka";
+  ["pg4","pg5","div3","div4"].forEach(id => {
+    const el = document.getElementById(id); if (el) el.hidden = !isTanka;
+  });
+  updatePreview();
+}
+
+function updatePreview() {
+  const ids = state.currentType === "haiku"
+    ? ["phrase1","phrase2","phrase3"]
+    : ["phrase1","phrase2","phrase3","phrase4","phrase5"];
+  const parts = ids.map(id => document.getElementById(id)?.value.trim() || "──");
+  document.getElementById("previewText").textContent = parts.join("　");
+}
+
+/* ============================================================
+   トースト
+   ============================================================ */
+function showToast(msg) {
+  const t = document.getElementById("toast");
+  t.textContent = msg;
+  t.hidden = false;
+  clearTimeout(showToast._t);
+  showToast._t = setTimeout(() => { t.hidden = true; }, 3000);
+}
+
+/* ============================================================
+   イベント登録
+   ============================================================ */
+function initEvents() {
+  // 投稿ボタン
+  document.getElementById("openModalBtn").addEventListener("click",  () => openModal());
+  document.getElementById("emptyComposeBtn").addEventListener("click",() => openModal());
+
+  // 投稿モーダル
+  document.getElementById("closeModalBtn").addEventListener("click", closeModal);
+  document.getElementById("modalOverlay").addEventListener("click", e => { if(e.target===e.currentTarget) closeModal(); });
+  document.getElementById("submitBtn").addEventListener("click", submitPost);
+
+  // 句タブ
+  document.querySelectorAll(".poem-type-tabs .tab-btn").forEach(b =>
+    b.addEventListener("click", () => switchType(b.dataset.type))
+  );
+
+  // プレビュー更新
+  ["phrase1","phrase2","phrase3","phrase4","phrase5"].forEach(id => {
+    document.getElementById(id)?.addEventListener("input", updatePreview);
+  });
+
+  // 世代選択（投稿フォーム）
+  document.querySelectorAll("#generationSelector .gen-btn").forEach(b => {
+    b.addEventListener("click", () => {
+      document.querySelectorAll("#generationSelector .gen-btn").forEach(x => x.classList.remove("selected"));
+      b.classList.add("selected");
+      state.selectedGen = b.dataset.gen;
+    });
+  });
+
+  // 座布団モーダル
+  document.getElementById("closeZabutonBtn").addEventListener("click", closeZabutonModal);
+  document.getElementById("zabutonOverlay").addEventListener("click", e => { if(e.target===e.currentTarget) closeZabutonModal(); });
+  document.querySelectorAll("#zabutonGenSelector .gen-btn").forEach(b => {
+    b.addEventListener("click", () => {
+      document.querySelectorAll("#zabutonGenSelector .gen-btn").forEach(x => x.classList.remove("selected"));
+      b.classList.add("selected");
+      setTimeout(() => giveZabuton(b.dataset.gen), 100);
+    });
+  });
+
+  // 削除確認モーダル
+  document.getElementById("closeDeleteBtn").addEventListener("click", closeDeleteModal);
+  document.getElementById("cancelDeleteBtn").addEventListener("click", closeDeleteModal);
+  document.getElementById("deleteOverlay").addEventListener("click", e => { if(e.target===e.currentTarget) closeDeleteModal(); });
+  document.getElementById("confirmDeleteBtn").addEventListener("click", deletePost);
+
+  // フィード内イベント委任（座布団・編集・削除ボタン）
+  document.getElementById("haikuFeed").addEventListener("click", e => {
+    const btn = e.target.closest("[data-action]");
+    if (!btn) return;
+    const { action, id } = btn.dataset;
+    if (action === "zabuton") { openZabutonModal(id); }
+    if (action === "edit")   {
+      const post = state.posts.find(p => p.id === id);
+      if (post) openModal(post);
+    }
+    if (action === "delete") { openDeleteModal(id); }
+  });
+
+  // ソート
+  document.querySelectorAll(".sort-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      document.querySelectorAll(".sort-btn").forEach(b => b.classList.remove("active"));
+      btn.classList.add("active");
+      state.sort = btn.dataset.sort;
+      renderFeed();
+    });
+  });
+
+  // フィルター
+  document.getElementById("generationFilter").addEventListener("change", e => {
+    state.filterGen = e.target.value;
+    renderFeed();
+  });
+
+  // ESCキー
+  document.addEventListener("keydown", e => {
+    if (e.key === "Escape") { closeModal(); closeZabutonModal(); closeDeleteModal(); }
+  });
+}
+
+/* ============================================================
+   初期化
+   ============================================================ */
+document.addEventListener("DOMContentLoaded", () => {
+  getSessionId();  // セッションIDを確保
+  initEvents();
+  loadPosts();
+});
+</script>
+</body>
+</html>
