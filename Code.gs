@@ -55,8 +55,12 @@ const COL = {
   ZAB_TWENTY: 10,
   ZAB_FORTY:  11,
   ZAB_SENIOR: 12,
+  AI_SCORE:   13,  // Geminiによる自動評価（0〜100点）
+  AI_COMMENT: 14,  // Geminiによる一言コメント
 };
-const TOTAL_COLS = 12;
+const TOTAL_COLS = 14;
+
+const GEMINI_MODEL = "gemini-flash-latest"; // 常に最新の安定版Flashモデルを指すGoogle公式のエイリアス（個別モデルの廃止に影響されにくい）
 
 /* 会員シートの列定義（1-indexed） */
 const MCOL = {
@@ -135,6 +139,8 @@ function dispatch(payload) {
     case "changePassword":    return actionChangePassword(payload);
     case "forgotPassword":    return actionForgotPassword(payload);
     case "checkSession":      return actionCheckSession(payload);
+    case "changeNickname":    return actionChangeNickname(payload);
+    case "deleteAccount":     return actionDeleteAccount(payload);
     // 投稿系
     case "getPosts":    return actionGetPosts(payload);
     case "createPost":  return actionCreatePost(payload);
@@ -254,6 +260,50 @@ function actionCheckSession(payload) {
   return { nickname: session.nickname };
 }
 
+/** ニックネーム変更 */
+function actionChangeNickname(payload) {
+  const session = requireSession(payload.token);
+  const newNickname = sanitizeText(payload.nickname || "", MAX_NICKNAME_LEN);
+  if (!newNickname) throw new AppError("ニックネームを入力してください");
+
+  const sheet = getMembersSheet();
+  const rowIndex = findMemberRowById(sheet, session.memberId);
+  if (!rowIndex) throw new AppError("会員情報が見つかりません");
+
+  sheet.getRange(rowIndex, MCOL.NICKNAME).setValue(newNickname);
+  // 現在のセッションにも即座に反映（再ログイン不要にするため）
+  updateSessionNickname(payload.token, session.memberId, newNickname);
+
+  return { nickname: newNickname };
+}
+
+/**
+ * 退会（アカウント削除）
+ * 本人確認のため現在のパスワードの入力を必須とする。
+ * 過去の投稿は削除せず残す（投稿者不明として残るのみで、以後誰にも編集・削除権限は発生しない）。
+ */
+function actionDeleteAccount(payload) {
+  const session = requireSession(payload.token);
+  const password = String(payload.password || "");
+  if (!password) throw new AppError("確認のため現在のパスワードを入力してください");
+
+  const sheet = getMembersSheet();
+  const rowIndex = findMemberRowById(sheet, session.memberId);
+  if (!rowIndex) throw new AppError("会員情報が見つかりません");
+
+  const row = sheet.getRange(rowIndex, 1, 1, MEMBER_TOTAL_COLS).getValues()[0];
+  const salt = String(row[MCOL.SALT - 1]);
+  const storedHash = String(row[MCOL.PASSWORD_HASH - 1]);
+  if (hashPassword(password, salt) !== storedHash) {
+    throw new AppError("パスワードが正しくありません");
+  }
+
+  sheet.deleteRow(rowIndex);
+  CacheService.getScriptCache().remove(sessionCacheKey(payload.token));
+
+  return { ok: true };
+}
+
 /** パスワード変更（初回強制変更・任意変更の両方に対応） */
 function actionChangePassword(payload) {
   const session = requireSession(payload.token);
@@ -320,6 +370,80 @@ function actionForgotPassword(payload) {
 }
 
 /* ============================================================
+   Gemini によるAI評価
+   ============================================================ */
+
+/**
+ * 投稿された句をGemini APIで評価する。
+ * GEMINI_API_KEY が未設定、またはAPI呼び出しに失敗した場合は null を返す
+ * （評価に失敗しても投稿自体は成功させるため、ここで例外は投げない）。
+ */
+function evaluateWithGemini(type, phrases, comment) {
+  try {
+    const apiKey = PropertiesService.getScriptProperties().getProperty("GEMINI_API_KEY");
+    if (!apiKey) {
+      Logger.log("GEMINI_API_KEY が未設定のため、AI評価をスキップしました");
+      return { score: null, comment: "", debug: "GEMINI_API_KEYが未設定です" };
+    }
+
+    const typeLabel = type === "haiku" ? "川柳・俳句" : "短歌";
+    const poemText  = phrases.join(" ");
+    const commentPart = comment ? `\n投稿者の「ひとこと」：${comment}` : "";
+
+    const prompt =
+      `あなたは俳句・短歌の鑑賞が得意な、温かく親しみやすい評者です。\n` +
+      `以下の${typeLabel}を読んで評価してください。${commentPart}\n\n` +
+      `作品：${poemText}\n\n` +
+      `次のJSON形式のみを出力してください。前置きや説明、コードブロックの記号は一切付けないでください。\n` +
+      `{"score": 0から100の整数, "comment": "作者を励ます温かい一言コメント（20〜40文字程度）"}`;
+
+    const res = UrlFetchApp.fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${apiKey}`,
+      {
+        method: "post",
+        contentType: "application/json",
+        muteHttpExceptions: true,
+        payload: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: { temperature: 0.7, maxOutputTokens: 200 },
+        }),
+      }
+    );
+
+    if (res.getResponseCode() !== 200) {
+      const bodyHead = res.getContentText().slice(0, 300);
+      Logger.log("Gemini APIエラー(" + res.getResponseCode() + "): " + bodyHead);
+      return { score: null, comment: "", debug: "HTTP " + res.getResponseCode() + ": " + bodyHead };
+    }
+
+    const data = JSON.parse(res.getContentText());
+    let text = data.candidates && data.candidates[0] && data.candidates[0].content &&
+      data.candidates[0].content.parts && data.candidates[0].content.parts[0] &&
+      data.candidates[0].content.parts[0].text;
+    if (!text) {
+      return { score: null, comment: "", debug: "Geminiレスポンスにテキストがありません: " + res.getContentText().slice(0, 300) };
+    }
+
+    // コードブロック記号(```json ... ```)が付いていた場合の除去
+    text = text.trim().replace(/^```json/i, "").replace(/^```/, "").replace(/```$/, "").trim();
+
+    const parsed = JSON.parse(text);
+    const score = Math.round(Number(parsed.score));
+    if (!Number.isFinite(score)) {
+      return { score: null, comment: "", debug: "scoreが数値ではありません: " + text.slice(0, 200) };
+    }
+
+    return {
+      score: Math.max(0, Math.min(100, score)),
+      comment: sanitizeText(String(parsed.comment || ""), 60),
+    };
+  } catch (err) {
+    Logger.log("AI評価に失敗しました: " + (err && err.message));
+    return { score: null, comment: "", debug: "例外: " + (err && err.message) };
+  }
+}
+
+/* ============================================================
    投稿アクション
    ============================================================ */
 
@@ -342,7 +466,7 @@ function actionGetPosts(payload) {
   return { posts };
 }
 
-/** 新規投稿（ログイン必須） */
+/** 新規投稿(ログイン必須) */
 function actionCreatePost(payload) {
   const session = requireSession(payload.token);
   const { type, phrases, comment, generation } = payload;
@@ -351,6 +475,9 @@ function actionCreatePost(payload) {
   validatePhrases(type, phrases);
   validateGeneration(generation);
   const cleanComment = sanitizeText(comment || "", MAX_COMMENT_LEN);
+  const cleanPhrases = phrases.map(p => sanitizeText(p, MAX_PHRASE_LEN));
+
+  const evaluation = evaluateWithGemini(type, cleanPhrases, cleanComment);
 
   const sheet = getSheet();
   const id    = Utilities.getUuid();
@@ -359,19 +486,26 @@ function actionCreatePost(payload) {
   sheet.appendRow([
     id,
     type,
-    JSON.stringify(phrases.map(p => sanitizeText(p, MAX_PHRASE_LEN))),
+    JSON.stringify(cleanPhrases),
     cleanComment,
     generation,
     session.memberId,
     session.nickname,
     now,
     0, 0, 0, 0,       // zabuton（世代別）
+    evaluation ? evaluation.score : "",
+    evaluation ? evaluation.comment : "",
   ]);
 
-  return { id, timestamp: now, nickname: session.nickname };
+  return {
+    id, timestamp: now, nickname: session.nickname,
+    aiScore: evaluation ? evaluation.score : null,
+    aiComment: evaluation ? evaluation.comment : "",
+    aiDebug: evaluation && evaluation.debug ? evaluation.debug : undefined, // TODO: 原因判明後に削除
+  };
 }
 
-/** 投稿編集（本人のみ） */
+/** 投稿編集（本人のみ。編集後の内容でAI評価も更新） */
 function actionEditPost(payload) {
   const session = requireSession(payload.token);
   const { postId, type, phrases, comment, generation } = payload;
@@ -380,17 +514,25 @@ function actionEditPost(payload) {
   validatePhrases(type, phrases);
   validateGeneration(generation);
   const cleanComment = sanitizeText(comment || "", MAX_COMMENT_LEN);
+  const cleanPhrases = phrases.map(p => sanitizeText(p, MAX_PHRASE_LEN));
 
   const { sheet, rowIndex } = requirePostOwner(postId, session.memberId);
 
+  const evaluation = evaluateWithGemini(type, cleanPhrases, cleanComment);
+
   sheet.getRange(rowIndex, COL.TYPE).setValue(type);
-  sheet.getRange(rowIndex, COL.PHRASES).setValue(
-    JSON.stringify(phrases.map(p => sanitizeText(p, MAX_PHRASE_LEN)))
-  );
+  sheet.getRange(rowIndex, COL.PHRASES).setValue(JSON.stringify(cleanPhrases));
   sheet.getRange(rowIndex, COL.COMMENT).setValue(cleanComment);
   sheet.getRange(rowIndex, COL.GENERATION).setValue(generation);
+  sheet.getRange(rowIndex, COL.AI_SCORE).setValue(evaluation ? evaluation.score : "");
+  sheet.getRange(rowIndex, COL.AI_COMMENT).setValue(evaluation ? evaluation.comment : "");
 
-  return { ok: true };
+  return {
+    ok: true,
+    aiScore: evaluation ? evaluation.score : null,
+    aiComment: evaluation ? evaluation.comment : "",
+    aiDebug: evaluation && evaluation.debug ? evaluation.debug : undefined, // TODO: 原因判明後に削除
+  };
 }
 
 /** 投稿削除（本人のみ） */
@@ -452,7 +594,8 @@ function getSheet() {
     sheet.appendRow([
       "id","type","phrases","comment","generation",
       "member_id","nickname","timestamp",
-      "zab_teen","zab_twenties","zab_forties","zab_senior"
+      "zab_teen","zab_twenties","zab_forties","zab_senior",
+      "ai_score","ai_comment"
     ]);
     sheet.setFrozenRows(1);
     // member_id 列を非表示（外部ツールから見えにくくする）
@@ -483,6 +626,9 @@ function rowToPublicPost(row, currentMemberId) {
   try { phrases = JSON.parse(row[COL.PHRASES - 1]); } catch (_) {}
 
   const storedMemberId = String(row[COL.MEMBER_ID - 1] || "");
+  const aiScoreRaw = row[COL.AI_SCORE - 1];
+  const aiScore = (aiScoreRaw === "" || aiScoreRaw === null || aiScoreRaw === undefined)
+    ? null : Number(aiScoreRaw);
 
   return {
     id:         String(row[COL.ID - 1]),
@@ -493,6 +639,8 @@ function rowToPublicPost(row, currentMemberId) {
     nickname:   String(row[COL.NICKNAME - 1] || ""),
     timestamp:  Number(row[COL.TIMESTAMP - 1]),
     isOwner:    Boolean(currentMemberId) && storedMemberId === currentMemberId,
+    aiScore:    aiScore,
+    aiComment:  String(row[COL.AI_COMMENT - 1] || ""),
     zabuton: {
       teen:     Number(row[COL.ZAB_TEEN - 1]   || 0),
       twenties: Number(row[COL.ZAB_TWENTY - 1] || 0),
@@ -562,6 +710,15 @@ function createSession(memberId, nickname) {
     SESSION_TTL_SEC
   );
   return token;
+}
+
+function updateSessionNickname(token, memberId, nickname) {
+  if (!token) return;
+  CacheService.getScriptCache().put(
+    sessionCacheKey(token),
+    JSON.stringify({ memberId, nickname }),
+    SESSION_TTL_SEC
+  );
 }
 
 function getSession(token) {
