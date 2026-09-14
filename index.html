@@ -71,6 +71,9 @@ input,select,textarea{font-family:var(--font-sans)}
 
 /* ── カード ── */
 .haiku-feed{display:flex;flex-direction:column;gap:24px}
+.feed-section:not(:first-child){margin-top:8px}
+.feed-section-title{font-family:var(--font-serif);font-size:1.05rem;font-weight:700;color:var(--ink);padding-bottom:8px;margin-bottom:16px;border-bottom:2px solid var(--vermilion);display:flex;align-items:center;gap:6px}
+.feed-section-posts{display:flex;flex-direction:column;gap:24px}
 .haiku-card{background:#fff;border-radius:var(--r-lg);box-shadow:0 2px 16px var(--shadow);overflow:hidden;animation:cardIn .4s ease both;border-left:4px solid transparent;transition:box-shadow var(--tr),transform var(--tr)}
 .haiku-card:hover{box-shadow:0 6px 28px rgba(26,26,46,.18);transform:translateY(-2px)}
 .haiku-card[data-gen="teen"]    {border-left-color:var(--pine)}
@@ -120,6 +123,11 @@ input,select,textarea{font-family:var(--font-sans)}
 .zab-bar-fill[data-gen="senior"]  {background:var(--indigo)}
 .zab-count{width:28px;font-size:.75rem;font-weight:700;color:var(--text);text-align:right;flex-shrink:0}
 .zab-emoji{font-size:.8rem;flex-shrink:0}
+
+/* AI評価（Gemini） */
+.ai-eval{margin-top:14px;padding-top:14px;border-top:1px dashed var(--border);text-align:center}
+.ai-eval-badge{display:inline-flex;align-items:center;gap:4px;background:linear-gradient(135deg,#fdf4e3,#f5e6c8);color:var(--gold);border:1px solid var(--gold);border-radius:20px;padding:4px 14px;font-size:.75rem;font-weight:700;letter-spacing:.02em}
+.ai-eval-comment{margin-top:6px;font-size:.8rem;color:var(--text-sub);font-style:italic;line-height:1.6}
 
 /* ── 空状態 ── */
 .empty-state{text-align:center;padding:40px 16px}
@@ -293,6 +301,8 @@ input,select,textarea{font-family:var(--font-sans)}
     <div class="feed-sort">
       <button class="sort-btn active" data-sort="new">新着順</button>
       <button class="sort-btn" data-sort="zabuton">座布団順</button>
+      <button class="sort-btn" data-sort="season">季節別</button>
+      <button class="sort-btn" data-sort="year">年別</button>
     </div>
     <select class="generation-filter" id="generationFilter" aria-label="世代で絞り込む">
       <option value="all">すべての世代</option>
@@ -607,6 +617,24 @@ const GENERATIONS = {
 
 const TYPE_LABELS = { haiku:"川柳・俳句", tanka:"短歌" };
 
+const SEASON_ORDER  = ["spring","summer","autumn","winter"];
+const SEASON_LABELS = { spring:"🌸 春", summer:"🌻 夏", autumn:"🍁 秋", winter:"❄️ 冬" };
+
+function getSeasonKey(timestamp) {
+  const month = new Date(timestamp).getMonth() + 1; // 1〜12
+  if (month >= 3 && month <= 5)  return "spring";
+  if (month >= 6 && month <= 8)  return "summer";
+  if (month >= 9 && month <= 11) return "autumn";
+  return "winter";
+}
+function getYearKey(timestamp) {
+  return new Date(timestamp).getFullYear();
+}
+/* AI評価が付いていない投稿は最下位に並ぶよう -1 扱いにする */
+function scoreForSort(post) {
+  return (post.aiScore === null || post.aiScore === undefined) ? -1 : post.aiScore;
+}
+
 /* ── 認証トークン ──
    ログイン成功時にサーバーが発行するセッショントークン。localStorage に永続化。
    有効期限（6時間）が切れるとサーバー側で無効になる。
@@ -721,6 +749,11 @@ function renderCard(post) {
     ? `<p class="poem-comment">「${esc(post.comment)}」</p>` : "";
   const author  = post.nickname
     ? `<span class="card-timestamp">by ${esc(post.nickname)}</span>` : "";
+  const aiEval = (post.aiScore !== null && post.aiScore !== undefined)
+    ? `<div class="ai-eval">
+         <span class="ai-eval-badge">✨ AI評価 ${esc(post.aiScore)}点</span>
+         ${post.aiComment ? `<p class="ai-eval-comment">${esc(post.aiComment)}</p>` : ""}
+       </div>` : "";
 
   // 投稿者判定：サーバーがログイン中の会員と照合して返す isOwner を使用
   const ownerBtns = post.isOwner ? `
@@ -734,6 +767,7 @@ function renderCard(post) {
     <div class="card-tanzaku" data-type-label="${esc(TYPE_LABELS[post.type] || post.type)}">
       <div class="poem-body">${renderPhrases(post)}</div>
       ${comment}
+      ${aiEval}
     </div>
     <div class="card-footer">
       <div class="card-meta">
@@ -760,20 +794,52 @@ function renderFeed() {
   let posts = state.posts.filter(p =>
     state.filterGen === "all" || p.generation === state.filterGen
   );
-  if (state.sort === "new") {
-    posts.sort((a,b) => b.timestamp - a.timestamp);
-  } else {
-    posts.sort((a,b) => totalZab(b) - totalZab(a));
-  }
 
   feed.hidden = false;
   if (posts.length === 0) {
     feed.innerHTML = "";
     empty.hidden = false;
+    return;
+  }
+  empty.hidden = true;
+
+  if (state.sort === "season" || state.sort === "year") {
+    feed.innerHTML = renderGroupedFeed(posts, state.sort);
   } else {
-    empty.hidden = true;
+    if (state.sort === "new") {
+      posts.sort((a,b) => b.timestamp - a.timestamp);
+    } else {
+      posts.sort((a,b) => totalZab(b) - totalZab(a));
+    }
     feed.innerHTML = posts.map(renderCard).join("");
   }
+}
+
+/* 季節別／年別グループ表示。各グループ内はAI評価の点数が高い順（未評価は最後、同点は新着順） */
+function renderGroupedFeed(posts, mode) {
+  const groups = new Map();
+  posts.forEach(p => {
+    const key = mode === "season" ? getSeasonKey(p.timestamp) : getYearKey(p.timestamp);
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(p);
+  });
+
+  const orderedKeys = mode === "season"
+    ? SEASON_ORDER.filter(k => groups.has(k))
+    : Array.from(groups.keys()).sort((a, b) => b - a); // 年は新しい順
+
+  return orderedKeys.map(key => {
+    const groupPosts = groups.get(key).slice().sort((a, b) => {
+      const diff = scoreForSort(b) - scoreForSort(a);
+      return diff !== 0 ? diff : b.timestamp - a.timestamp;
+    });
+    const title = mode === "season" ? SEASON_LABELS[key] : `${key}年`;
+    return `
+      <div class="feed-section">
+        <h2 class="feed-section-title">${esc(title)}</h2>
+        <div class="feed-section-posts">${groupPosts.map(renderCard).join("")}</div>
+      </div>`;
+  }).join("");
 }
 
 function updateCardEl(postId) {
@@ -818,12 +884,12 @@ async function submitPost() {
 
   const btn = document.getElementById("submitBtn");
   btn.disabled = true;
-  btn.textContent = "詠んでいます…";
+  btn.textContent = "AIが評価しています…";
 
   try {
     if (state.editingPostId) {
       // ── 編集 ──
-      await callApi("editPost", {
+      const editResult = await callApi("editPost", {
         token: state.token,
         postId: state.editingPostId,
         type, phrases, comment,
@@ -832,13 +898,16 @@ async function submitPost() {
       // ローカルも更新
       const idx = state.posts.findIndex(p => p.id === state.editingPostId);
       if (idx !== -1) {
-        state.posts[idx] = { ...state.posts[idx], type, phrases, comment, generation: state.selectedGen };
+        state.posts[idx] = {
+          ...state.posts[idx], type, phrases, comment, generation: state.selectedGen,
+          aiScore: editResult.aiScore, aiComment: editResult.aiComment,
+        };
       }
       renderFeed();
       showToast("句を編集しました ✏️");
     } else {
       // ── 新規投稿 ──
-      const { id, timestamp, nickname } = await callApi("createPost", {
+      const { id, timestamp, nickname, aiScore, aiComment } = await callApi("createPost", {
         token: state.token,
         type, phrases, comment,
         generation: state.selectedGen,
@@ -849,6 +918,7 @@ async function submitPost() {
         nickname,
         timestamp,
         isOwner: true,
+        aiScore, aiComment,
         zabuton: { teen:0, twenties:0, forties:0, senior:0 },
       };
       state.posts.unshift(newPost);
