@@ -144,6 +144,7 @@ function dispatch(payload) {
     // 投稿系
     case "getPosts":    return actionGetPosts(payload);
     case "createPost":  return actionCreatePost(payload);
+    case "evaluatePost": return actionEvaluatePost(payload);
     case "editPost":    return actionEditPost(payload);
     case "deletePost":  return actionDeletePost(payload);
     case "zabuton":     return actionZabuton(payload);
@@ -405,7 +406,11 @@ function evaluateWithGemini(type, phrases, comment) {
         muteHttpExceptions: true,
         payload: JSON.stringify({
           contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: { temperature: 0.7, maxOutputTokens: 200 },
+          generationConfig: {
+            temperature: 0.7,
+            maxOutputTokens: 1024,             // 思考トークン込みでも回答本体が切れないよう余裕を持たせる
+            thinkingConfig: { thinkingBudget: 0 }, // 単純な採点タスクのため内部思考は無効化（対応モデルのみ有効）
+          },
         }),
       }
     );
@@ -416,18 +421,32 @@ function evaluateWithGemini(type, phrases, comment) {
       return { score: null, comment: "", debug: "HTTP " + res.getResponseCode() + ": " + bodyHead };
     }
 
-    const data = JSON.parse(res.getContentText());
+    const rawOuter = res.getContentText();
+    let data;
+    try {
+      data = JSON.parse(rawOuter);
+    } catch (parseErr) {
+      return { score: null, comment: "", debug: "外側JSON解析失敗: " + parseErr.message + " / 生データ: " + rawOuter.slice(0, 400) };
+    }
+
     let text = data.candidates && data.candidates[0] && data.candidates[0].content &&
       data.candidates[0].content.parts && data.candidates[0].content.parts[0] &&
       data.candidates[0].content.parts[0].text;
     if (!text) {
-      return { score: null, comment: "", debug: "Geminiレスポンスにテキストがありません: " + res.getContentText().slice(0, 300) };
+      return { score: null, comment: "", debug: "Geminiレスポンスにテキストがありません。生データ: " + rawOuter.slice(0, 400) };
     }
 
+    const rawInner = text;
     // コードブロック記号(```json ... ```)が付いていた場合の除去
     text = text.trim().replace(/^```json/i, "").replace(/^```/, "").replace(/```$/, "").trim();
 
-    const parsed = JSON.parse(text);
+    let parsed;
+    try {
+      parsed = JSON.parse(text);
+    } catch (parseErr) {
+      return { score: null, comment: "", debug: "内側JSON解析失敗: " + parseErr.message + " / Geminiの生テキスト: " + rawInner.slice(0, 400) };
+    }
+
     const score = Math.round(Number(parsed.score));
     if (!Number.isFinite(score)) {
       return { score: null, comment: "", debug: "scoreが数値ではありません: " + text.slice(0, 200) };
@@ -501,8 +520,32 @@ function actionCreatePost(payload) {
     id, timestamp: now, nickname: session.nickname,
     aiScore: evaluation ? evaluation.score : null,
     aiComment: evaluation ? evaluation.comment : "",
-    aiDebug: evaluation && evaluation.debug ? evaluation.debug : undefined, // TODO: 原因判明後に削除
   };
+}
+
+/** まだAI評価が付いていない投稿を、あとから評価して保存する（投稿者本人のみ） */
+function actionEvaluatePost(payload) {
+  const session = requireSession(payload.token);
+  const { postId } = payload;
+
+  const { sheet, rowIndex } = requirePostOwner(postId, session.memberId);
+  const row = sheet.getRange(rowIndex, 1, 1, TOTAL_COLS).getValues()[0];
+
+  const type = String(row[COL.TYPE - 1]);
+  let phrases = [];
+  try { phrases = JSON.parse(row[COL.PHRASES - 1]); } catch (_) {}
+  const comment = String(row[COL.COMMENT - 1] || "");
+
+  const evaluation = evaluateWithGemini(type, phrases, comment);
+
+  sheet.getRange(rowIndex, COL.AI_SCORE).setValue(evaluation && evaluation.score !== null ? evaluation.score : "");
+  sheet.getRange(rowIndex, COL.AI_COMMENT).setValue(evaluation ? evaluation.comment : "");
+
+  if (!evaluation || evaluation.score === null) {
+    throw new AppError("AI評価を取得できませんでした。時間をおいて再度お試しください");
+  }
+
+  return { aiScore: evaluation.score, aiComment: evaluation.comment };
 }
 
 /** 投稿編集（本人のみ。編集後の内容でAI評価も更新） */
@@ -531,7 +574,6 @@ function actionEditPost(payload) {
     ok: true,
     aiScore: evaluation ? evaluation.score : null,
     aiComment: evaluation ? evaluation.comment : "",
-    aiDebug: evaluation && evaluation.debug ? evaluation.debug : undefined, // TODO: 原因判明後に削除
   };
 }
 

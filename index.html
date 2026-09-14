@@ -128,7 +128,9 @@ input,select,textarea{font-family:var(--font-sans)}
 .ai-eval{margin-top:14px;padding-top:14px;border-top:1px dashed var(--border);text-align:center}
 .ai-eval-badge{display:inline-flex;align-items:center;gap:4px;background:linear-gradient(135deg,#fdf4e3,#f5e6c8);color:var(--gold);border:1px solid var(--gold);border-radius:20px;padding:4px 14px;font-size:.75rem;font-weight:700;letter-spacing:.02em}
 .ai-eval-comment{margin-top:6px;font-size:.8rem;color:var(--text-sub);font-style:italic;line-height:1.6}
-.ai-eval-debug{font-size:.72rem;color:var(--vermilion);font-family:monospace;word-break:break-all;line-height:1.5}
+.btn-ai-eval{background:transparent;border:1.5px dashed var(--gold);color:var(--gold);border-radius:20px;padding:6px 16px;font-size:.75rem;font-weight:700;transition:all var(--tr)}
+.btn-ai-eval:hover{background:#fdf4e3}
+.btn-ai-eval:disabled{opacity:.6;cursor:default}
 
 /* ── 空状態 ── */
 .empty-state{text-align:center;padding:40px 16px}
@@ -755,7 +757,9 @@ function renderCard(post) {
          <span class="ai-eval-badge">✨ AI評価 ${esc(post.aiScore)}点</span>
          ${post.aiComment ? `<p class="ai-eval-comment">${esc(post.aiComment)}</p>` : ""}
        </div>`
-    : (post.aiDebug ? `<div class="ai-eval"><p class="ai-eval-debug">[デバッグ] ${esc(post.aiDebug)}</p></div>` : "");
+    : (post.isOwner
+        ? `<div class="ai-eval"><button class="btn-ai-eval" data-action="evaluate" data-id="${esc(post.id)}">✨ AI評価を取得</button></div>`
+        : "");
 
   // 投稿者判定：サーバーがログイン中の会員と照合して返す isOwner を使用
   const ownerBtns = post.isOwner ? `
@@ -902,14 +906,14 @@ async function submitPost() {
       if (idx !== -1) {
         state.posts[idx] = {
           ...state.posts[idx], type, phrases, comment, generation: state.selectedGen,
-          aiScore: editResult.aiScore, aiComment: editResult.aiComment, aiDebug: editResult.aiDebug,
+          aiScore: editResult.aiScore, aiComment: editResult.aiComment,
         };
       }
       renderFeed();
       showToast("句を編集しました ✏️");
     } else {
       // ── 新規投稿 ──
-      const { id, timestamp, nickname, aiScore, aiComment, aiDebug } = await callApi("createPost", {
+      const { id, timestamp, nickname, aiScore, aiComment } = await callApi("createPost", {
         token: state.token,
         type, phrases, comment,
         generation: state.selectedGen,
@@ -920,7 +924,7 @@ async function submitPost() {
         nickname,
         timestamp,
         isOwner: true,
-        aiScore, aiComment, aiDebug,
+        aiScore, aiComment,
         zabuton: { teen:0, twenties:0, forties:0, senior:0 },
       };
       state.posts.unshift(newPost);
@@ -934,6 +938,19 @@ async function submitPost() {
   } finally {
     btn.disabled = false;
     btn.textContent = "詠む 🌸";
+  }
+}
+
+async function evaluatePostAi(postId, btn) {
+  if (btn) { btn.disabled = true; btn.textContent = "評価中…"; }
+  try {
+    const { aiScore, aiComment } = await callApi("evaluatePost", { token: state.token, postId });
+    const post = state.posts.find(p => p.id === postId);
+    if (post) { post.aiScore = aiScore; post.aiComment = aiComment; updateCardEl(postId); }
+    showToast("✨ AI評価を取得しました");
+  } catch (e) {
+    showToast("⚠️ " + e.message);
+    if (btn) { btn.disabled = false; btn.textContent = "✨ AI評価を取得"; }
   }
 }
 
@@ -1434,6 +1451,7 @@ function initEvents() {
       if (post) openModal(post);
     }
     if (action === "delete") { openDeleteModal(id); }
+    if (action === "evaluate") { evaluatePostAi(id, btn); }
   });
 
   // ソート
